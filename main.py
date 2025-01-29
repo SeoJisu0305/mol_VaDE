@@ -156,7 +156,7 @@ class VaDE(nn.Module):
                     z,_=self.encoder(x) # g(x; phi) = [mu_til, log sigma_til^2]
                     x_=self.decoder(z) # f(z; theta) = [mu_x]
 
-                    loss=Loss(x_,x) # 모든 x dim에 대해 더함
+                    loss=Loss(x_,x) # add for all x dim
 
                     L+=loss.detach().cpu().numpy()
 
@@ -164,12 +164,11 @@ class VaDE(nn.Module):
                     loss.backward()
                     opti.step()
 
-                epoch_bar.write('L2={:.4f}'.format(L/len(dataloader))) # 데이터 당 평균 loss
+                epoch_bar.write('L2={:.4f}'.format(L/len(dataloader))) # avg loss per data
 
-            # AE로는 sigma가 학습이 안되니, mu_til 계산하는 weight과 동일하게 설정
             self.encoder.log_sigma2_l.load_state_dict(self.encoder.mu_l.state_dict())
 
-            ''' GMM의 초기화 '''
+            ''' GMM initialization '''
             Z = [] # mu til
             with torch.no_grad():
                 for batch in dataloader:
@@ -178,13 +177,13 @@ class VaDE(nn.Module):
                         x = x.cuda()
 
                     z1, z2 = self.encoder(x) # g(x; phi) = [mu_til, log sigma_til^2]
-                    assert F.mse_loss(z1, z2) == 0 # 앞서 mu_til, log sigma_til^2을 계산하는 weight을 동일하게 설정하였으니, 두개의 값이 같아야 함.
+                    assert F.mse_loss(z1, z2) == 0 
                     Z.append(z1) 
 
             Z = torch.cat(Z, 0).detach().cpu().numpy()
 
             gmm = GaussianMixture(n_components=self.args['nClusters'], covariance_type='diag')
-            pre = gmm.fit_predict(Z) # EM 알고리즘을 이용하여 학습된다. 
+            pre = gmm.fit_predict(Z) # trained by EM algorithm
 
             self.pi_.data = torch.from_numpy(gmm.weights_).cuda().float()
             self.mu_c.data = torch.from_numpy(gmm.means_).cuda().float()
@@ -224,7 +223,7 @@ class VaDE(nn.Module):
         L_rec /= L # average for monte carlo sampling L
         L_rec = - L_rec * x.size(1) 
 
-        ''' 5-1. q(c|x) ~ p(c|z) 클러스터링 관련 term '''
+        ''' 5-1. q(c|x) ~ p(c|z) clustering related term '''
         pi=self.pi_ # pi_k [k]
         log_sigma2_c=self.log_sigma2_c # log sigma_c^2 [k, hid_dim]
         mu_c=self.mu_c # mu_c [k, hid_dim]
